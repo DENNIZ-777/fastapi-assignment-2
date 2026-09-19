@@ -9,7 +9,7 @@ from fastapi import (
 )
 
 from src.users.schemas import CreateUserRequest, UserResponse
-from common.database import blocked_token_db, session_db, user_db
+from src.common.database import blocked_token_db, session_db, user_db
 
 user_router = APIRouter(prefix="/users", tags=["users"])
 
