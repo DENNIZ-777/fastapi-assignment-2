@@ -25,6 +25,8 @@
 
 - `uv` 설치 및 사용에 관한 구체적인 내용은 [`uv` 공식문서](https://docs.astral.sh/uv/)를 참조하세요.
 
+- 제공된 테스트 코드는 과제 요구사항의 일부를 검증하기 위한 것입니다. 실제 채점 시 공개되지 않은 추가 테스트가 실행될 수 있으므로, 제공된 테스트의 통과 여부만이 아니라 README의 모든 요구사항을 만족하도록 구현해주세요.
+
 ## 과제 요구 사항
 
 ### 개요
@@ -160,9 +162,9 @@
 
 
 
-### 2. `/auth/token` 엔드포인트(Token-Based Authentication)
+### 2. `/api/auth/token` 엔드포인트(Token-Based Authentication)
 
-#### 2-1) POST /auth/token — 로그인 및 토큰 발급
+#### 2-1) POST /api/auth/token — 로그인 및 토큰 발급
 
 - 서버가 사용자 인증에 성공하면, Access/Refresh Token을 발급하여 반환합니다.
 - Access/Refresh Token은 다음과 같이 구성됩니다.
@@ -199,14 +201,14 @@
 		|이메일이 `user_db`에 존재하지 않거나, 비밀번호가 올바르지 않은 경우|401|ERR_010|INVALID ACCOUNT|
 
 
-#### 2-2) POST /auth/token/refresh — 토큰 갱신
+#### 2-2) POST /api/auth/token/refresh — 토큰 갱신
 
 - `refresh_token`을 검증하고, 새 `access_token`과 `refresh_token`을 재발급합니다.
 - 검증 방법은 `1-2)`와 동일합니다.
 - 이때 `refresh_token`이 블랙리스트(`blocked_token_db`: dict)에 있는지 확인해야 합니다.
 - 새로 발급된 `refresh_token`은 기존 토큰과 교체되어야 하므로, 기존 토큰은 `blocked_token_db`에 추가합니다.
 - 이 때, `refresh_token`은 `토큰 원문`을 `key`, `토큰의 원래 만료 시점`을 `value`로 하여 `blocked_token_db`에 추가합니다.
-- 각 토큰의 구성 방법은 `POST /auth/token`과 동일합니다.
+- 각 토큰의 구성 방법은 `POST /api/auth/token`과 동일합니다.
 
 ##### 요청 예시
 - 다음의 Field가 헤더에 포함됨
@@ -216,7 +218,7 @@
 
 
 ##### 응답
-- 성공 응답: `POST /auth/token과 동일`
+- 성공 응답: `POST /api/auth/token`과 동일
 
 - 실패 응답  
 	|   상황|상태 코드|ERROR_CODE|ERROR_MSG|
@@ -226,7 +228,7 @@
 	|Authorization 헤더가 제시되지 않은 경우|401|ERR_009|UNAUTHENTICATED|
 
 
-#### 2-3) DELETE /auth/token — 토큰 무효화(로그아웃)
+#### 2-3) DELETE /api/auth/token — 토큰 무효화(로그아웃)
 
 - 사용자의 `refresh_token`을 무효화합니다.
 - 블랙리스트(`blocked_token_db`)에 저장하여 추후 재사용을 방지합니다.
@@ -252,7 +254,7 @@
 
 ## 3. 세션 기반 인증 API
 
-### 3-1) POST /auth/session — 세션 로그인
+### 3-1) POST /api/auth/session — 세션 로그인
 - 서버는 `email`과 `password`로 사용자를 검증하고, 이에 성공하면 세션을 생성 및 저장합니다.
 - 서버는 생성한 `sid`(str)를 클라이언트의 쿠키로 설정합니다.
 	- 세션은 `LONG_SESSION_LIFESPAN`(분) 동안 유효한 것으로 합니다.
@@ -274,7 +276,7 @@
 		|요청 본문에서 필수값이 누락된 경우|422|ERR_001|MISSING VALUE|
 		|이메일이 `user_db`에 존재하지 않거나, 비밀번호가 올바르지 않은 경우|401|ERR_010|INVALID ACCOUNT|
 
-### 3-2) DELETE /auth/session — 세션 로그아웃
+### 3-2) DELETE /api/auth/session — 세션 로그아웃
 - 요청의 쿠키 중 이름이 `sid`인 것이 있는지 확인합니다.
 	- 존재하는 경우
 		- 클라이언트의 `sid` 쿠키를 만료시켜야 합니다.
@@ -290,7 +292,7 @@
 ## 제출 방법
 
 - 이번 과제는 **소스 코드**와 함께 **해당 코드로 가동된 EC2 서버의 IP 주소**까지 기한 안으로 제출해주셔야 완료됩니다!
-- 과제 수락 시 생성된 repository의 `main` 브랜치에 소스 코드와 EC2 서버의 IP 주소를 담아 push해주세요.
+- 템플릿으로 생성된 repository의 `main` 브랜치에 소스 코드와 EC2 서버의 IP 주소를 담아 push해주세요.
 - IP 주소는 프로젝트 루트 폴더의 **server_ip.py를 수정**하는 방식으로 제출해주세요.  
 - 완성된 코드는 **프로젝트 루트 디렉토리에서 `uv run uvicorn src.main:app` 명령어 실행으로 서버가 가동되어야 합니다**.  
 - 제출한 EC2 서버는 외부에서 **80번 포트의 `http://<server_ip>/health`** 주소로 접근할 수 있어야 합니다.
