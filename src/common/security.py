@@ -1,6 +1,7 @@
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import jwt
 from jwt.exceptions import InvalidTokenError as PyJWTInvalidTokenError
@@ -29,24 +30,42 @@ def verify_password(password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_token(user_id: int, lifespan_minutes: int) -> str:
+TokenType = Literal["access", "refresh"]
+
+
+def create_jwt(user_id: int, lifespan_minutes: int, token_type: TokenType) -> str:
     expiration = datetime.now(timezone.utc) + timedelta(minutes=lifespan_minutes)
     return jwt.encode(
-        {"sub": str(user_id), "exp": expiration},
+        {
+            "sub": str(user_id),
+            "exp": expiration,
+            "token_type": token_type,
+            "jti": secrets.token_urlsafe(16),
+        },
         JWT_SECRET_KEY,
         algorithm=JWT_ALGORITHM,
     )
 
 
-def decode_token(token: str) -> dict[str, object]:
+def decode_token(
+    token: str,
+    expected_type: TokenType | None = None,
+) -> dict[str, object]:
     try:
         payload = jwt.decode(
             token,
             JWT_SECRET_KEY,
             algorithms=[JWT_ALGORITHM],
-            options={"require": ["sub", "exp"]},
+            options={"require": ["sub", "exp", "token_type", "jti"]},
         )
-        if not isinstance(payload.get("sub"), str):
+        if (
+            not isinstance(payload.get("sub"), str)
+            or payload.get("token_type") not in ("access", "refresh")
+            or not isinstance(payload.get("jti"), str)
+            or not payload["jti"]
+        ):
+            raise InvalidTokenException()
+        if expected_type is not None and payload["token_type"] != expected_type:
             raise InvalidTokenException()
         return payload
     except PyJWTInvalidTokenError as exc:
