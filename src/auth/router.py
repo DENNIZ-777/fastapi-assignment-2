@@ -1,12 +1,15 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+import secrets
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, Response, status
 
 from src.auth.schemas import LoginRequest, TokenResponse
 from src.common.custom_exception import InvalidAccountException, InvalidTokenException
-from src.common.database import blocked_token_db, user_db
+from src.common.database import blocked_token_db, session_db
 from src.common.security import create_jwt, decode_token, parse_bearer_token, verify_password
+from src.common.user_store import find_user_by_email, find_user_by_id, read_user_field
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -21,33 +24,13 @@ class RefreshCredentials:
     expiration: int
 
 
-def _read_user_field(user: Any, field: str) -> Any:
-    if isinstance(user, dict):
-        return user[field]
-    return getattr(user, field)
-
-
-def _find_user_by_email(email: str) -> Any | None:
-    return next(
-        (user for user in user_db if _read_user_field(user, "email") == email),
-        None,
-    )
-
-
-def _find_user_by_id(user_id: int) -> Any | None:
-    return next(
-        (user for user in user_db if _read_user_field(user, "user_id") == user_id),
-        None,
-    )
-
-
 def _get_user_id(payload: dict[str, object]) -> int:
     try:
         user_id = int(payload["sub"])
     except (KeyError, TypeError, ValueError) as exc:
         raise InvalidTokenException() from exc
 
-    if _find_user_by_id(user_id) is None:
+    if find_user_by_id(user_id) is None:
         raise InvalidTokenException()
     return user_id
 
@@ -57,6 +40,16 @@ def _create_token_pair(user_id: int) -> TokenResponse:
         access_token=create_jwt(user_id, SHORT_SESSION_LIFESPAN, "access"),
         refresh_token=create_jwt(user_id, LONG_SESSION_LIFESPAN, "refresh"),
     )
+
+
+def _authenticate_user(request: LoginRequest) -> Any:
+    user = find_user_by_email(str(request.email))
+    if user is None or not verify_password(
+        request.password,
+        read_user_field(user, "hashed_password"),
+    ):
+        raise InvalidAccountException()
+    return user
 
 
 def _get_refresh_credentials(
@@ -76,14 +69,8 @@ def _get_refresh_credentials(
 
 @auth_router.post("/token", response_model=TokenResponse)
 def create_token(request: LoginRequest) -> TokenResponse:
-    user = _find_user_by_email(str(request.email))
-    if user is None or not verify_password(
-        request.password,
-        _read_user_field(user, "hashed_password"),
-    ):
-        raise InvalidAccountException()
-
-    return _create_token_pair(_read_user_field(user, "user_id"))
+    user = _authenticate_user(request)
+    return _create_token_pair(read_user_field(user, "user_id"))
 
 
 @auth_router.post("/token/refresh", response_model=TokenResponse)
@@ -104,10 +91,32 @@ def delete_token(
 
 
 @auth_router.post("/session")
-def create_session():
-    pass
+def create_session(request: LoginRequest) -> Response:
+    user = _authenticate_user(request)
+    sid = secrets.token_urlsafe(32)
+    while sid in session_db:
+        sid = secrets.token_urlsafe(32)
+
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=LONG_SESSION_LIFESPAN)
+    session_db[sid] = (read_user_field(user, "user_id"), expires_at)
+
+    response = Response(status_code=status.HTTP_200_OK)
+    response.set_cookie(
+        key="sid",
+        value=sid,
+        max_age=LONG_SESSION_LIFESPAN * 60,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
-@auth_router.delete("/session")
-def delete_session():
-    pass
+@auth_router.delete("/session", status_code=status.HTTP_204_NO_CONTENT)
+def delete_session(
+    sid: Annotated[str | None, Cookie()] = None,
+) -> Response:
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    if sid is not None:
+        session_db.pop(sid, None)
+        response.delete_cookie(key="sid")
+    return response
